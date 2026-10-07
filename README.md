@@ -63,3 +63,7 @@ src/
 **Adding a world/level:** add data in `data/worlds.ts` and register a level factory in `WorldManager`.
 
 Debug: `__afrobot.debugTeleport(x, y, z)` in the console (the route runs from z = 11 toward z = -232).
+
+## License
+
+MIT © 2026 Lexeo Labs — see [LICENSE](LICENSE).
