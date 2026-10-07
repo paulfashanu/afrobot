@@ -1,6 +1,27 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
+/** Global clock for foliage sway (advanced by the game loop). */
+export const SwayTime = { value: 0 };
+
+/** Bends vertices with a `sway` attribute in the wind (palms, bushes, banners). */
+function addSway(mat: THREE.MeshStandardMaterial) {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = SwayTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float sway;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        {
+          vec4 wp = modelMatrix * vec4(transformed, 1.0);
+          float ph = wp.x * 0.27 + wp.z * 0.19;
+          transformed.x += (sin(uTime * 1.7 + ph) + 0.4 * sin(uTime * 3.9 + ph * 2.0)) * sway * 0.22;
+          transformed.z += cos(uTime * 1.3 + ph * 1.3) * sway * 0.16;
+          transformed.y += sin(uTime * 2.3 + ph) * sway * 0.05;
+        }`);
+  };
+  mat.customProgramCacheKey = () => 'sway';
+}
+
 /**
  * Merges lots of small static decoration pieces into a handful of vertex-coloured meshes,
  * keeping draw calls low (palms, stalls, lamps, clouds, bridges...).
@@ -12,12 +33,13 @@ export class StaticBatcher {
   private q = new THREE.Quaternion();
   private e = new THREE.Euler();
   private c = new THREE.Color();
+  private hasSway = false;
 
   add(
     geo: THREE.BufferGeometry,
     pos: THREE.Vector3Like,
     color: THREE.ColorRepresentation,
-    opts: { rot?: [number, number, number]; order?: THREE.EulerOrder; scale?: [number, number, number]; glow?: boolean; glowBoost?: number } = {},
+    opts: { rot?: [number, number, number]; order?: THREE.EulerOrder; scale?: [number, number, number]; glow?: boolean; glowBoost?: number; sway?: number } = {},
   ) {
     const g = (geo.index ? geo.toNonIndexed() : geo.clone());
     g.deleteAttribute('uv');
@@ -33,6 +55,8 @@ export class StaticBatcher {
     const col = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) { col[i * 3] = this.c.r; col[i * 3 + 1] = this.c.g; col[i * 3 + 2] = this.c.b; }
     g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('sway', new THREE.BufferAttribute(new Float32Array(n).fill(opts.sway ?? 0), 1));
+    if (opts.sway) this.hasSway = true;
     (opts.glow ? this.glow : this.solid).push(g);
   }
 
@@ -41,10 +65,9 @@ export class StaticBatcher {
     const group = new THREE.Group();
     group.name = name;
     if (this.solid.length) {
-      const mesh = new THREE.Mesh(
-        mergeGeometries(this.solid),
-        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.05, flatShading: opts.flat ?? false }),
-      );
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.05, flatShading: opts.flat ?? false });
+      if (this.hasSway) addSway(mat);
+      const mesh = new THREE.Mesh(mergeGeometries(this.solid), mat);
       mesh.castShadow = opts.castShadow ?? true;
       mesh.receiveShadow = opts.receiveShadow ?? true;
       group.add(mesh);
@@ -57,6 +80,7 @@ export class StaticBatcher {
     this.glow.forEach((g) => g.dispose());
     this.solid = [];
     this.glow = [];
+    this.hasSway = false;
     return group;
   }
 }

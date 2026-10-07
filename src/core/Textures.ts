@@ -218,3 +218,24 @@ export function worldBox(w: number, h: number, d: number, tileU = 4, tileV = 3):
   uv.needsUpdate = true;
   return geo;
 }
+
+/**
+ * Re-orders a BoxGeometry's index so faces sharing a material are contiguous and
+ * collapses its 6 groups into one group per material (6 draw calls → 2).
+ * faceMat: material index for faces +x, -x, +y, -y, +z, -z.
+ */
+export function regroupBox(geo: THREE.BufferGeometry, faceMat: number[]) {
+  const index = geo.index!;
+  const src = Array.from(index.array as ArrayLike<number>);
+  const per = src.length / 6;
+  const out: number[] = [];
+  geo.clearGroups();
+  const mats = [...new Set(faceMat)].sort((a, b) => a - b);
+  for (const m of mats) {
+    const start = out.length;
+    faceMat.forEach((fm, f) => { if (fm === m) out.push(...src.slice(f * per, (f + 1) * per)); });
+    geo.addGroup(start, out.length - start, m);
+  }
+  geo.setIndex(out);
+  return geo;
+}

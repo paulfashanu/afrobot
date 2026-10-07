@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Prims, StaticBatcher } from '../core/Batcher';
 import { Solid } from '../core/Physics';
-import { facadeTexture, pavingTexture, textTexture, worldBox } from '../core/Textures';
+import { facadeTexture, pavingTexture, regroupBox, textTexture, worldBox } from '../core/Textures';
 
 /** Shared state that prop builders write into while the level is assembled. */
 export interface LevelContext {
@@ -63,13 +63,14 @@ export function building(
   const variant = opts.variant ?? Math.floor(rand() * 4);
   const side = facadeMat(color, variant);
   const roof = roofMat(opts.walkable ? 0xfff1dc : 0xd9d2c5);
-  const mesh = new THREE.Mesh(worldBox(w, h, d, 4, 3), [side, side, roof, roof, side, side]);
+  const mesh = new THREE.Mesh(regroupBox(worldBox(w, h, d, 4, 3), [0, 0, 1, 1, 0, 0]), [side, roof]);
   // Align facade floors to world height so windows sit consistently.
   mesh.position.set(x, base + h / 2, z);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   ctx.group.add(mesh);
-  ctx.blockers.push(mesh);
+  // Only sizeable buildings block the camera; kiosks & pillars shouldn't shove it into Afrobot's afro
+  if (h > 6 && w * d > 12) ctx.blockers.push(mesh);
   if (opts.solid !== false) ctx.solids.push(Solid.box(x, top, z, w, h, d));
 
   // Roof trim band
@@ -110,7 +111,7 @@ export function palm(ctx: LevelContext, x: number, y: number, z: number, scale =
     pz = z + Math.sin(leanDir) * off;
     py = y + segH * (i + 0.5);
     const r = (0.28 - k * 0.08) * scale;
-    b.add(Prims.cyl, { x: px, y: py, z: pz }, i % 2 ? 0x8b5a2b : 0xa36f3a, { scale: [r * 2, segH * 1.05, r * 2] });
+    b.add(Prims.cyl, { x: px, y: py, z: pz }, i % 2 ? 0x8b5a2b : 0xa36f3a, { scale: [r * 2, segH * 1.05, r * 2], sway: k * k * 0.7 * scale });
   }
   const topY = py + segH * 0.5;
   const fronds = 8;
@@ -122,12 +123,12 @@ export function palm(ctx: LevelContext, x: number, y: number, z: number, scale =
     const cz = pz + Math.cos(a) * len * 0.45 * Math.cos(droop);
     const cy = topY - Math.sin(droop) * len * 0.45 + 0.1;
     b.add(Prims.sphereLo, { x: cx, y: cy, z: cz }, i % 2 ? 0x2fae4f : 0x1f8f3e, {
-      scale: [0.75 * scale, 0.1 * scale, len], rot: [droop, a, 0], order: 'YXZ',
+      scale: [0.75 * scale, 0.1 * scale, len], rot: [droop, a, 0], order: 'YXZ', sway: 1.1 * scale,
     });
   }
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2;
-    b.add(Prims.sphereLo, { x: px + Math.sin(a) * 0.22 * scale, y: topY - 0.2 * scale, z: pz + Math.cos(a) * 0.22 * scale }, 0x5b3a1e, { scale: [0.3 * scale, 0.3 * scale, 0.3 * scale] });
+    b.add(Prims.sphereLo, { x: px + Math.sin(a) * 0.22 * scale, y: topY - 0.2 * scale, z: pz + Math.cos(a) * 0.22 * scale }, 0x5b3a1e, { scale: [0.3 * scale, 0.3 * scale, 0.3 * scale], sway: 0.75 * scale });
   }
 }
 
@@ -221,10 +222,10 @@ export function acUnit(ctx: LevelContext, x: number, y: number, z: number) {
 
 export function bush(ctx: LevelContext, x: number, y: number, z: number, s = 1) {
   ctx.batch.add(Prims.cyl, { x, y: y + 0.3 * s, z }, 0xd8743f, { scale: [0.9 * s, 0.6 * s, 0.9 * s] });
-  ctx.batch.add(Prims.sphereLo, { x, y: y + 0.85 * s, z }, 0x2fae4f, { scale: [1.1 * s, 0.9 * s, 1.1 * s] });
+  ctx.batch.add(Prims.sphereLo, { x, y: y + 0.85 * s, z }, 0x2fae4f, { scale: [1.1 * s, 0.9 * s, 1.1 * s], sway: 0.18 });
   for (let i = 0; i < 4; i++) {
     const a = rand() * Math.PI * 2;
-    ctx.batch.add(Prims.sphereLo, { x: x + Math.cos(a) * 0.4 * s, y: y + (0.9 + rand() * 0.3) * s, z: z + Math.sin(a) * 0.4 * s }, pick([0xff5fa2, 0xffd166, 0xff6b6b]), { scale: [0.18 * s, 0.18 * s, 0.18 * s] });
+    ctx.batch.add(Prims.sphereLo, { x: x + Math.cos(a) * 0.4 * s, y: y + (0.9 + rand() * 0.3) * s, z: z + Math.sin(a) * 0.4 * s }, pick([0xff5fa2, 0xffd166, 0xff6b6b]), { scale: [0.18 * s, 0.18 * s, 0.18 * s], sway: 0.2 });
   }
   ctx.solids.push(Solid.cyl(x, y + 0.6 * s, z, 0.45 * s, 0.6 * s));
 }
@@ -240,7 +241,7 @@ export function bunting(ctx: LevelContext, a: THREE.Vector3, b2: THREE.Vector3, 
     const p = new THREE.Vector3().lerpVectors(a, b2, t);
     p.y -= Math.sin(t * Math.PI) * sag;
     ctx.batch.add(Prims.box, p, 0x333333, { scale: [0.03, 0.03, 0.95], rot: [0, yaw, 0] });
-    if (i < n) ctx.batch.add(Prims.cone, { x: p.x, y: p.y - 0.3, z: p.z }, cols[i % cols.length], { scale: [0.55, 0.55, 0.06], rot: [Math.PI, yaw + Math.PI / 2, 0], order: 'YXZ' });
+    if (i < n) ctx.batch.add(Prims.cone, { x: p.x, y: p.y - 0.3, z: p.z }, cols[i % cols.length], { scale: [0.55, 0.55, 0.06], rot: [Math.PI, yaw + Math.PI / 2, 0], order: 'YXZ', sway: 0.5 });
   }
 }
 
@@ -288,4 +289,192 @@ export function pylon(ctx: LevelContext, x: number, top: number, z: number, r = 
 export function canoe(ctx: LevelContext, x: number, z: number, rotY: number, color: number) {
   ctx.batch.add(Prims.sphereLo, { x, y: -1.15, z }, 0x8b5a2b, { scale: [1.2, 0.6, 5], rot: [0, rotY, 0] });
   ctx.batch.add(Prims.sphereLo, { x, y: -1.0, z }, color, { scale: [1.25, 0.25, 5.05], rot: [0, rotY, 0] });
+}
+
+// ---------------------------------------------------------------------------
+// V0.2 props: animated decor & city life
+
+/** Something in the level that animates every frame (decor only). */
+export type DecorUpdate = (dt: number, t: number, player: THREE.Vector3) => void;
+
+const SKIN = [0x5b3a1e, 0x7a4a2a, 0x8d5a34, 0x4a2c17, 0x6b4226];
+const ANKARA = [0xff6b4a, 0xffc21a, 0x18a558, 0x6b2fd6, 0xff5fa2, 0x1b4fd1, 0x06d6a0, 0xd7261e];
+
+/**
+ * A faceless, stylised Lagos citizen silhouette. Turns to watch Afrobot, and gives a
+ * little cheer-hop when Afrobot runs past. `walk` makes them stroll back and forth.
+ */
+export function npc(
+  ctx: LevelContext, x: number, y: number, z: number, yaw: number,
+  opts: { walk?: [number, number]; seed?: number } = {},
+): DecorUpdate {
+  const seed = opts.seed ?? Math.floor(rand() * 1000);
+  const r = (k: number) => { const s = Math.sin(seed * 12.9898 + k * 78.233) * 43758.5453; return s - Math.floor(s); };
+  const b = new StaticBatcher();
+  const skin = SKIN[Math.floor(r(1) * SKIN.length)];
+  const cloth = ANKARA[Math.floor(r(2) * ANKARA.length)];
+  const cloth2 = ANKARA[Math.floor(r(3) * ANKARA.length)];
+  const tall = 0.9 + r(4) * 0.25;
+  const robe = r(5) < 0.55;
+  if (robe) {
+    // flowing robe / boubou
+    b.add(Prims.cone, { x: 0, y: 0.75 * tall, z: 0 }, cloth, { scale: [1.0, 1.5 * tall, 0.8] });
+    b.add(Prims.box, { x: 0, y: 0.9 * tall, z: 0.01 }, cloth2, { scale: [0.75, 0.1, 0.62] });
+  } else {
+    b.add(Prims.cyl, { x: -0.12, y: 0.35 * tall, z: 0 }, 0x2b2440, { scale: [0.18, 0.7 * tall, 0.18] });
+    b.add(Prims.cyl, { x: 0.12, y: 0.35 * tall, z: 0 }, 0x2b2440, { scale: [0.18, 0.7 * tall, 0.18] });
+    b.add(Prims.sphere, { x: 0, y: 0.98 * tall, z: 0 }, cloth, { scale: [0.62, 0.75 * tall, 0.45] });
+  }
+  b.add(Prims.sphere, { x: 0.36, y: 1.0 * tall, z: 0 }, cloth, { scale: [0.2, 0.55, 0.2], rot: [0, 0, 0.2] });
+  b.add(Prims.sphere, { x: -0.36, y: 1.0 * tall, z: 0 }, cloth, { scale: [0.2, 0.55, 0.2], rot: [0, 0, -0.2] });
+  b.add(Prims.cyl, { x: 0, y: 1.4 * tall, z: 0 }, skin, { scale: [0.15, 0.15, 0.15] });
+  b.add(Prims.sphere, { x: 0, y: 1.62 * tall, z: 0 }, skin, { scale: [0.36, 0.42, 0.38] });
+  const hat = r(6);
+  if (hat < 0.35) {
+    // gele headwrap
+    b.add(Prims.sphereLo, { x: 0, y: 1.82 * tall, z: -0.02 }, cloth2, { scale: [0.52, 0.32, 0.46] });
+    b.add(Prims.cone, { x: 0.12, y: 1.98 * tall, z: -0.05 }, cloth2, { scale: [0.38, 0.32, 0.32], rot: [0, 0, -0.8] });
+    b.add(Prims.cone, { x: -0.12, y: 1.98 * tall, z: -0.05 }, cloth2, { scale: [0.38, 0.32, 0.32], rot: [0, 0, 0.8] });
+  } else if (hat < 0.6) {
+    // kufi cap
+    b.add(Prims.cyl, { x: 0, y: 1.8 * tall, z: 0 }, cloth2, { scale: [0.38, 0.16, 0.38] });
+  } else if (hat < 0.8) {
+    // head basket with fruit
+    b.add(Prims.cyl, { x: 0, y: 1.9 * tall, z: 0 }, 0xc8a165, { scale: [0.7, 0.2, 0.7] });
+    for (let i = 0; i < 4; i++) b.add(Prims.sphereLo, { x: Math.cos(i * 1.6) * 0.15, y: 2.03 * tall, z: Math.sin(i * 1.6) * 0.15 }, [0xff7a00, 0xd7261e, 0xffc21a, 0x18a558][i], { scale: [0.17, 0.17, 0.17] });
+  } else {
+    b.add(Prims.sphereLo, { x: 0, y: 1.72 * tall, z: -0.03 }, 0x1a1210, { scale: [0.4, 0.3, 0.4] });
+  }
+  const g = b.build('npc', { castShadow: true });
+  g.position.set(x, y, z);
+  g.rotation.y = yaw;
+  ctx.group.add(g);
+  if (!opts.walk) ctx.solids.push(Solid.cyl(x, y + 1.6, z, 0.4, 1.6));
+
+  const home = new THREE.Vector3(x, y, z);
+  let hop = 0, hopV = 0, cheerCd = 0;
+  const phase = r(7) * 10;
+  return (dt, t, p) => {
+    let px = home.x, pz = home.z;
+    if (opts.walk) {
+      const [dx, dz] = opts.walk;
+      const k = Math.sin(t * 0.35 + phase);
+      px = home.x + dx * k; pz = home.z + dz * k;
+      const dir = Math.cos(t * 0.35 + phase) >= 0 ? 1 : -1;
+      g.rotation.y = Math.atan2(dx * dir, dz * dir);
+      g.position.y = home.y + Math.abs(Math.sin(t * 6 + phase)) * 0.06;
+    }
+    const ddx = p.x - px, ddz = p.z - pz;
+    const d = Math.hypot(ddx, ddz);
+    if (!opts.walk) {
+      // turn to watch Afrobot when close, otherwise sway / chat
+      const want = d < 9 && Math.abs(p.y - home.y) < 4 ? Math.atan2(ddx, ddz) : yaw + Math.sin(t * 0.4 + phase) * 0.4;
+      let dy = want - g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      g.rotation.y += dy * Math.min(1, dt * 4);
+      g.rotation.z = Math.sin(t * 1.6 + phase) * 0.03;
+      cheerCd -= dt;
+      if (d < 3.2 && cheerCd <= 0 && hop === 0) { hopV = 4.5; cheerCd = 3; }
+      hopV -= 18 * dt; hop = Math.max(0, hop + hopV * dt);
+      if (hop === 0) hopV = 0;
+      g.position.y = home.y + hop + Math.sin(t * 2 + phase) * 0.015;
+    }
+    g.position.x = px; g.position.z = pz;
+  };
+}
+
+/** Scrolling LED ticker sign. */
+export function ticker(ctx: LevelContext, text: string, x: number, y: number, z: number, rotY: number, w: number, h: number, color = '#ffc21a'): DecorUpdate {
+  const c = document.createElement('canvas');
+  c.width = 2048; c.height = 128;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#120a2a'; g.fillRect(0, 0, c.width, c.height);
+  g.font = '700 84px Fredoka, sans-serif';
+  g.textBaseline = 'middle';
+  g.fillStyle = color;
+  const unit = text + '   ✦   ';
+  let px = 0;
+  while (px < c.width) { g.fillText(unit, px, 68); px += g.measureText(unit).width; }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.repeat.set(w / (h * 16), 1);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.5, 1.5, 1.5) }));
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = rotY;
+  ctx.group.add(mesh);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.2), new THREE.MeshStandardMaterial({ color: 0x2b2440, roughness: 0.4, metalness: 0.5 }));
+  back.position.copy(mesh.position); back.rotation.y = rotY; back.translateZ(-0.12);
+  ctx.group.add(back);
+  return (dt) => { tex.offset.x += dt * 0.06; };
+}
+
+/** Two-sided billboard spinning on a rooftop pole. */
+export function spinningSign(ctx: LevelContext, key: string, lines: string[], x: number, y: number, z: number, opts: { bg?: string; accent?: string } = {}): DecorUpdate {
+  ctx.batch.add(Prims.cyl, { x, y: y + 2, z }, 0x3b3550, { scale: [0.3, 4, 0.3] });
+  const group = new THREE.Group();
+  group.position.set(x, y + 5.2, z);
+  const tex = textTexture(key, lines, { bg: opts.bg ?? '#ff5fa2', accent: opts.accent ?? '#ffc21a', w: 512, h: 256, font: 70 });
+  const mat = new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.3, 1.3, 1.3) });
+  for (const ry of [0, Math.PI]) {
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(5, 2.5), mat);
+    p.rotation.y = ry;
+    p.position.z = ry ? -0.08 : 0.08;
+    group.add(p);
+  }
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(5.3, 2.8, 0.12), new THREE.MeshStandardMaterial({ color: 0x2b2440, metalness: 0.5, roughness: 0.4 }));
+  frame.castShadow = true;
+  group.add(frame);
+  ctx.group.add(group);
+  return (dt) => { group.rotation.y += dt * 0.6; };
+}
+
+/** Holographic projector: light cone + spinning wireframe gem + floating ring. */
+export function hologram(ctx: LevelContext, x: number, y: number, z: number): DecorUpdate {
+  ctx.batch.add(Prims.cylHi, { x, y: y + 0.4, z }, 0x2b2440, { scale: [1.8, 0.8, 1.8] });
+  ctx.batch.add(Prims.torus, { x, y: y + 0.82, z }, 0x5ff7ff, { scale: [1.6, 1.6, 1.6], rot: [Math.PI / 2, 0, 0], glow: true });
+  ctx.solids.push(Solid.cyl(x, y + 0.8, z, 0.9, 0.8));
+  const g = new THREE.Group();
+  g.position.set(x, y + 0.8, z);
+  const coneMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x5ff7ff).multiplyScalar(1.2), transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const cone = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 0.5, 3.4, 24, 1, true), coneMat);
+  cone.position.y = 1.7;
+  g.add(cone);
+  const gem = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0, 0), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x5ff7ff).multiplyScalar(2), wireframe: true }));
+  gem.position.y = 3.6;
+  g.add(gem);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.04, 6, 40), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffc21a).multiplyScalar(2) }));
+  ring.position.y = 3.6;
+  g.add(ring);
+  ctx.group.add(g);
+  return (_dt, t) => {
+    gem.rotation.y = t * 0.9; gem.rotation.x = t * 0.4;
+    gem.position.y = 3.6 + Math.sin(t * 1.5) * 0.2;
+    ring.rotation.x = Math.PI / 2 + Math.sin(t) * 0.4; ring.rotation.y = t * 0.6;
+    coneMat.opacity = 0.1 + Math.sin(t * 7) * 0.025;
+  };
+}
+
+/** Futuristic "solar tree": tilted panel petals on a pole, glowing core. */
+export function solarTree(ctx: LevelContext, x: number, y: number, z: number) {
+  const b = ctx.batch;
+  b.add(Prims.cyl, { x, y: y + 2.5, z }, 0xfff1dc, { scale: [0.3, 5, 0.3] });
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    b.add(Prims.box, { x: x + Math.cos(a) * 1.1, y: y + 5 + (i % 2) * 0.4, z: z + Math.sin(a) * 1.1 }, 0x1b2f6b, { scale: [1.8, 0.08, 1.1], rot: [0, -a, 0.3], order: 'YXZ' });
+    b.add(Prims.box, { x: x + Math.cos(a) * 1.1, y: y + 4.95 + (i % 2) * 0.4, z: z + Math.sin(a) * 1.1 }, 0xf5b52a, { scale: [1.9, 0.04, 1.2], rot: [0, -a, 0.3], order: 'YXZ' });
+  }
+  b.add(Prims.sphereLo, { x, y: y + 5.3, z }, 0x3dffb5, { scale: [0.5, 0.5, 0.5], glow: true });
+  ctx.solids.push(Solid.cyl(x, y + 5, z, 0.2, 5));
+}
+
+/** Shopfront: coloured awning (a bonus bounce platform!) + glowing window. */
+export function shopfront(ctx: LevelContext, faceX: number, z: number, dir: 1 | -1, color: number, w = 5) {
+  const ax = faceX + dir * 0.75;
+  for (let i = 0; i < 5; i++) {
+    const t = (i + 0.5) / 5 - 0.5;
+    ctx.batch.add(Prims.box, { x: ax, y: 3.2, z: z + t * w }, i % 2 ? color : 0xffffff, { scale: [1.5, 0.18, w / 5 + 0.01], rot: [0, 0, dir * 0.18] });
+  }
+  ctx.batch.add(Prims.box, { x: faceX + dir * 0.06, y: 1.5, z }, 0xfff2c4, { scale: [0.1, 1.8, w * 0.7], glow: true, glowBoost: 1.3 });
+  ctx.batch.add(Prims.box, { x: faceX + dir * 0.08, y: 1.5, z }, 0x2b2440, { scale: [0.12, 2.0, w * 0.74 + 0.15] });
+  ctx.solids.push(Solid.box(ax, 3.3, z, 1.5, 0.3, w));
 }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Solid } from '../core/Physics';
-import { pavingTexture, trimTexture, worldBox } from '../core/Textures';
+import { pavingTexture, regroupBox, trimTexture, worldBox } from '../core/Textures';
 
 export interface Updatable {
   update(dt: number, t: number): void;
@@ -63,7 +63,7 @@ export class Platform implements Updatable {
     geo.translate(0, -h / 2, 0);
     const side = texturedMat('side', style.side ?? 0x19b3a5);
     const topM = texturedMat('top', style.top ?? 0xffffff);
-    this.mesh = new THREE.Mesh(geo, [side, side, topM, side, side, side]);
+    this.mesh = new THREE.Mesh(regroupBox(geo, [0, 0, 1, 0, 0, 0]), [side, topM]);
     this.mesh.position.set(x, top, z);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;

@@ -17,7 +17,7 @@ export class Particles {
   private cursor = 0;
   private tmpC = new THREE.Color();
 
-  constructor() {
+  constructor(additive = true) {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3).setUsage(THREE.DynamicDrawUsage));
     geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3).setUsage(THREE.DynamicDrawUsage));
@@ -26,7 +26,8 @@ export class Particles {
     const mat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      uniforms: { uAdd: { value: additive ? 1 : 0 } },
       vertexShader: /* glsl */ `
         attribute float size; attribute float alpha; attribute vec3 color;
         varying vec3 vColor; varying float vAlpha;
@@ -37,18 +38,19 @@ export class Particles {
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: /* glsl */ `
+        uniform float uAdd;
         varying vec3 vColor; varying float vAlpha;
         void main() {
           vec2 c = gl_PointCoord - 0.5;
           float d = length(c);
           if (d > 0.5) discard;
-          float a = smoothstep(0.5, 0.0, d);
-          gl_FragColor = vec4(vColor * (1.0 + a), a * vAlpha);
+          float a = uAdd > 0.5 ? smoothstep(0.5, 0.0, d) : smoothstep(0.5, 0.3, d) * 0.85;
+          gl_FragColor = vec4(vColor * (1.0 + a * uAdd), a * vAlpha);
         }`,
     });
     this.points = new THREE.Points(geo, mat);
     this.points.frustumCulled = false;
-    this.points.renderOrder = 10;
+    this.points.renderOrder = additive ? 10 : 9;
   }
 
   emit(

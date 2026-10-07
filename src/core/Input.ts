@@ -18,6 +18,7 @@ export class Input {
       this.released.add(e.code);
     });
     window.addEventListener('blur', () => this.down.clear());
+    document.addEventListener('visibilitychange', () => this.down.clear());
 
     window.addEventListener('mousemove', (e) => {
       if (this.locked || this.dragging) {

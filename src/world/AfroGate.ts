@@ -79,9 +79,9 @@ export class AfroGate {
           float swirl = sin(a * 6.0 + r * 14.0 - uTime * (1.5 + uPower * 4.0));
           float bands = smoothstep(0.2, 1.0, swirl) * (1.0 - r * 0.6);
           vec3 locked = mix(vec3(0.25, 0.08, 0.45), vec3(0.6, 0.2, 0.9), bands);
-          vec3 open = mix(vec3(0.1, 0.9, 1.0), vec3(1.0, 0.8, 0.25), bands) * (1.8 + 1.2 * (1.0 - r));
+          vec3 open = mix(vec3(0.1, 0.9, 1.0), vec3(1.0, 0.8, 0.25), bands) * (1.0 + 0.7 * (1.0 - r));
           vec3 col = mix(locked, open, uPower);
-          float alpha = mix(0.55, 0.92, uPower) * smoothstep(1.0, 0.85, r);
+          float alpha = mix(0.55, 0.85, uPower) * smoothstep(1.0, 0.85, r);
           gl_FragColor = vec4(col, alpha);
         }`,
     });

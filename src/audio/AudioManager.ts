@@ -1,6 +1,8 @@
 export type Sfx =
   | 'jump' | 'doubleJump' | 'dash' | 'land' | 'collect' | 'enemyDefeat' | 'hurt'
-  | 'checkpoint' | 'portal' | 'complete' | 'node' | 'click' | 'splash' | 'zap' | 'alert';
+  | 'checkpoint' | 'portal' | 'complete' | 'node' | 'click' | 'splash' | 'zap' | 'alert'
+  | 'coreNear' | 'step' | 'pulse' | 'unlock' | 'relic' | 'secret' | 'blip' | 'chirp' | 'windup'
+  | 'break' | 'door' | 'stun' | 'mission' | 'beam' | 'skid' | 'hardLand' | 'ghost';
 
 /**
  * Procedural sound effects + a light Afrobeats-flavoured music loop, all synthesised
@@ -13,6 +15,10 @@ export class AudioManager {
   private musicBus!: GainNode;
   private noiseBuf!: AudioBuffer;
   private musicOn = true;
+  private musicVol = 0.7;
+  private sfxVol = 0.9;
+  private collectStreak = 0;
+  private lastCollect = 0;
   private nextStepTime = 0;
   private step = 0;
   private timer: number | null = null;
@@ -28,10 +34,10 @@ export class AudioManager {
       comp.threshold.value = -14;
       this.master.connect(comp).connect(this.ctx.destination);
       this.sfxBus = this.ctx.createGain();
-      this.sfxBus.gain.value = 0.9;
+      this.sfxBus.gain.value = this.sfxVol;
       this.sfxBus.connect(this.master);
       this.musicBus = this.ctx.createGain();
-      this.musicBus.gain.value = 0.28;
+      this.musicBus.gain.value = 0.4 * this.musicVol;
       this.musicBus.connect(this.master);
       const len = this.ctx.sampleRate;
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -50,14 +56,29 @@ export class AudioManager {
 
   toggleMusic() {
     this.musicOn = !this.musicOn;
-    if (this.ctx) this.musicBus.gain.setTargetAtTime(this.musicOn ? 0.28 : 0, this.ctx.currentTime, 0.1);
+    this.applyMusic();
     return this.musicOn;
   }
 
-  /** Duck/unduck music (pause menu). */
+  /** 0..1 volumes from Settings. */
+  setVolumes(music: number, sfx: number) {
+    this.musicVol = music;
+    this.sfxVol = sfx;
+    if (this.ctx) this.sfxBus.gain.setTargetAtTime(sfx, this.ctx.currentTime, 0.05);
+    this.applyMusic();
+  }
+
+  private ducked = false;
+  private applyMusic() {
+    if (!this.ctx) return;
+    const v = this.musicOn ? 0.4 * this.musicVol * (this.ducked ? 0.3 : 1) : 0;
+    this.musicBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.15);
+  }
+
+  /** Duck/unduck music (pause menu, dialogue, discoveries). */
   setMusicDuck(duck: boolean) {
-    if (!this.ctx || !this.musicOn) return;
-    this.musicBus.gain.setTargetAtTime(duck ? 0.08 : 0.28, this.ctx.currentTime, 0.15);
+    this.ducked = duck;
+    this.applyMusic();
   }
 
   // ---------- primitives ----------
@@ -116,11 +137,84 @@ export class AudioManager {
         this.noise(0.08, { vol: 0.15, freq: 300, type: 'lowpass' });
         break;
       case 'collect': {
+        // Pitch climbs with quick successive pickups — very satisfying in a row
+        const now = this.ctx.currentTime;
+        this.collectStreak = now - this.lastCollect < 2.2 ? Math.min(this.collectStreak + 1, 8) : 0;
+        this.lastCollect = now;
+        const up = Math.pow(2, (this.collectStreak * 2) / 12);
         const notes = [880, 1108.7, 1318.5, 1760];
-        notes.forEach((n, i) => this.tone(n, 0.22, { type: 'triangle', vol: 0.14, delay: i * 0.05 }));
-        this.tone(2637, 0.4, { type: 'sine', vol: 0.06, delay: 0.2 });
+        notes.forEach((n, i) => this.tone(n * up, 0.22, { type: 'triangle', vol: 0.13, delay: i * 0.045 }));
+        this.tone(2637 * up, 0.4, { type: 'sine', vol: 0.05, delay: 0.18 });
         break;
       }
+      case 'ghost':
+        this.tone(1320, 0.18, { type: 'sine', vol: 0.05 });
+        break;
+      case 'coreNear':
+        this.tone(1760 + Math.random() * 200, 0.5, { type: 'sine', vol: 0.025, attack: 0.05 });
+        this.tone(2637, 0.6, { type: 'sine', vol: 0.015, delay: 0.08, attack: 0.05 });
+        break;
+      case 'step':
+        this.noise(0.05, { vol: 0.05, freq: 900 + Math.random() * 400, q: 1.5 });
+        break;
+      case 'skid':
+        this.noise(0.22, { vol: 0.12, freq: 2200, sweep: 900, q: 2 });
+        break;
+      case 'hardLand':
+        this.tone(120, 0.22, { type: 'sine', vol: 0.35, slide: 45 });
+        this.noise(0.18, { vol: 0.2, freq: 400, type: 'lowpass' });
+        break;
+      case 'pulse':
+        this.tone(160, 0.6, { type: 'sine', vol: 0.4, slide: 55 });
+        this.tone(640, 0.45, { type: 'triangle', vol: 0.12, slide: 1600 });
+        this.noise(0.5, { vol: 0.18, freq: 1200, sweep: 6000, q: 1.2 });
+        break;
+      case 'unlock': {
+        const seq = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+        seq.forEach((n, i) => { this.tone(n, 0.5, { type: 'triangle', vol: 0.12, delay: i * 0.09 }); this.tone(n * 2, 0.3, { type: 'sine', vol: 0.04, delay: i * 0.09 }); });
+        [261.63, 392, 523.25].forEach((n) => this.tone(n, 1.8, { type: 'sine', vol: 0.09, delay: 0.45, attack: 0.1 }));
+        this.noise(1.2, { vol: 0.08, freq: 5000, delay: 0.4 });
+        break;
+      }
+      case 'relic':
+        [392, 466.16, 587.33, 698.46, 932.33].forEach((n, i) => this.tone(n, 1.2, { type: 'sine', vol: 0.09, delay: i * 0.14, attack: 0.04 }));
+        this.tone(98, 2, { type: 'triangle', vol: 0.12, attack: 0.3 });
+        break;
+      case 'secret':
+        [659.25, 783.99, 987.77, 1318.5, 1567.98].forEach((n, i) => this.tone(n, 0.3, { type: 'square', vol: 0.04, delay: i * 0.07 }));
+        this.tone(1975, 0.6, { type: 'sine', vol: 0.06, delay: 0.38 });
+        break;
+      case 'blip':
+        this.tone(620 + Math.random() * 120, 0.04, { type: 'square', vol: 0.025 });
+        break;
+      case 'chirp': {
+        const b = 1200 + Math.random() * 600;
+        this.tone(b, 0.07, { type: 'square', vol: 0.025, slide: b * 1.5 });
+        this.tone(b * 1.2, 0.07, { type: 'square', vol: 0.02, delay: 0.09, slide: b * 0.9 });
+        break;
+      }
+      case 'windup':
+        this.tone(300, 0.4, { type: 'sawtooth', vol: 0.04, slide: 900 });
+        break;
+      case 'break':
+        this.noise(0.5, { vol: 0.4, freq: 700, sweep: 150, q: 0.7 });
+        this.tone(90, 0.3, { type: 'sine', vol: 0.3, slide: 40 });
+        for (let i = 0; i < 4; i++) this.noise(0.08, { vol: 0.12, freq: 2000 + Math.random() * 2000, delay: 0.05 + i * 0.07 });
+        break;
+      case 'door':
+        this.tone(110, 0.9, { type: 'sawtooth', vol: 0.06, slide: 440 });
+        this.noise(0.9, { vol: 0.12, freq: 3000, sweep: 300, q: 2 });
+        break;
+      case 'stun':
+        this.tone(1400, 0.35, { type: 'square', vol: 0.03, slide: 300 });
+        break;
+      case 'mission':
+        [784, 988, 1175].forEach((n, i) => this.tone(n, 0.28, { type: 'triangle', vol: 0.09, delay: i * 0.08 }));
+        break;
+      case 'beam':
+        this.tone(1800, 1.6, { type: 'sine', vol: 0.06, slide: 220, attack: 0.05 });
+        this.noise(1.6, { vol: 0.12, freq: 6000, sweep: 400, q: 3 });
+        break;
       case 'enemyDefeat':
         this.tone(600, 0.25, { type: 'square', vol: 0.1, slide: 120 });
         this.noise(0.25, { vol: 0.25, freq: 1800, sweep: 300 });
