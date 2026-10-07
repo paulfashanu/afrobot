@@ -3,12 +3,15 @@
 A colourful browser 3D platformer — Lagos + Afrofuturism + playful sci-fi.
 Built with TypeScript, Three.js and Vite. Everything (models, textures, sounds, music) is generated procedurally — no external assets, no backend.
 
+**▶ Play it: https://paulfashanu.github.io/afrobot/**
+
 ## Run
 
 ```bash
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # typecheck + production build into dist/
+npm run deploy     # build + publish to GitHub Pages (gh-pages branch)
 ```
 
 ## Controls
